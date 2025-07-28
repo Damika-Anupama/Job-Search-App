@@ -1,0 +1,9 @@
+requests
+beautifulsoup4
+fastapi
+uvicorn[standard]
+redis
+celery
+pinecone>=3.0.0
+python-dotenv
+numpy

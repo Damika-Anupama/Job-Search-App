@@ -1,6 +1,3 @@
-# docker-compose.yml
-version: '3.8'
-
 services:
   redis:
     image: "redis/redis-stack-server:latest"
@@ -12,7 +9,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - .:/app  # Mount local code so changes are reflected without rebuilding
     env_file:
       - .env
     depends_on:
@@ -21,8 +18,11 @@ services:
 
   worker:
     build: .
+    volumes:
+      - .:/app
     env_file:
       - .env
     depends_on:
       - redis
-    command: "celery -A tasks.celery_app worker --loglevel=info"
+    # Command to start the celery worker
+    command: "celery -A tasks.celery_app worker --loglevel=info -B"
