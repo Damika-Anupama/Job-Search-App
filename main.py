@@ -1,12 +1,17 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any
 import redis
 import json
 from config import REDIS_URL
 from indexing import get_embedding, index as pinecone_index
 
 # Initialize FastAPI app
-app = FastAPI(title="Job Search API")
+app = FastAPI(
+    title="Job Search API",
+    description="AI-powered semantic job search system that scrapes and indexes job postings from Hacker News 'Who is Hiring?' threads",
+    version="1.0.0"
+)
 
 # Connect to Redis for caching
 try:
@@ -17,15 +22,49 @@ except redis.exceptions.ConnectionError as e:
     print(f"Could not connect to Redis: {e}")
     redis_client = None
 
-# Pydantic model for the search query
+# Pydantic models
 class SearchRequest(BaseModel):
-    query: str
+    query: str = Field(
+        ..., 
+        description="Search query to find relevant job postings",
+        examples=[
+            "python developer remote",
+            "machine learning AI engineer",
+            "frontend react javascript",
+            "backend rust systems programming",
+            "startup founding engineer",
+            "data scientist remote"
+        ]
+    )
 
-@app.post("/search")
+class JobResult(BaseModel):
+    id: str = Field(description="Unique job posting identifier")
+    score: float = Field(description="Relevance score (0-1, higher is more relevant)")
+    text: str = Field(description="Complete job posting text")
+
+class SearchResponse(BaseModel):
+    source: str = Field(description="Data source: 'cache' for cached results, 'pinecone' for fresh search")
+    results: List[JobResult] = Field(description="List of relevant job postings")
+
+@app.post("/search", response_model=SearchResponse)
 def search_jobs(request: SearchRequest):
     """
-    Accepts a search query, and returns the most relevant job postings.
-    Uses Redis for caching search results.
+    Search for job postings using semantic similarity.
+    
+    This endpoint performs semantic search across indexed job postings from Hacker News 
+    "Who is Hiring?" threads. Results are ranked by relevance score and cached for performance.
+    
+    **Features:**
+    - Semantic search (finds jobs by meaning, not just keywords)
+    - Redis caching for fast repeat queries
+    - Returns top 5 most relevant results
+    - Includes relevance scores
+    
+    **Example queries:**
+    - "python developer remote" - Find remote Python positions
+    - "machine learning startup" - Find ML roles at startups  
+    - "frontend react" - Find React frontend positions
+    - "backend rust systems" - Find systems programming roles
     """
     if not redis_client:
         raise HTTPException(status_code=503, detail="Redis connection not available.")
@@ -66,6 +105,26 @@ def search_jobs(request: SearchRequest):
 
     return {"source": "pinecone", "results": results}
 
-@app.get("/")
+@app.get("/", 
+    summary="API Health Check",
+    description="Returns API status and links to documentation"
+)
 def read_root():
-    return {"message": "Job Search API is running. Go to /docs to see the endpoints."}
+    """
+    Health check endpoint that confirms the API is running.
+    
+    **Returns:**
+    - API status message
+    - Link to interactive documentation
+    """
+    return {
+        "message": "Job Search API is running", 
+        "docs": "Visit /docs for interactive API documentation",
+        "version": "1.0.0",
+        "features": [
+            "Semantic job search",
+            "Redis caching",
+            "Hacker News job scraping",
+            "Vector similarity matching"
+        ]
+    }
