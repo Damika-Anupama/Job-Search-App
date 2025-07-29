@@ -1,0 +1,19 @@
+# ML requirements for full-ml and cloud-ml modes
+-r base.txt
+
+# Vector database
+pinecone>=3.0.0
+
+# Machine learning libraries
+numpy>=1.24.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# Transformers and embeddings
+sentence-transformers>=2.2.0
+transformers>=4.30.0
+torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
+tokenizers>=0.13.0
+
+# Cross-encoder reranking (if used)
+# cross-encoder>=1.2.0

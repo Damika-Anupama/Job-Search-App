@@ -1,0 +1,10 @@
+# Development and testing requirements
+pytest
+pytest-asyncio
+pytest-mock
+httpx  # For testing FastAPI endpoints
+requests-mock  # For mocking HTTP requests
+fakeredis  # For mocking Redis in tests
+coverage
+black  # Code formatting
+flake8  # Linting

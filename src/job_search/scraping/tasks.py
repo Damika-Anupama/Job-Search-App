@@ -103,5 +103,5 @@ def setup_periodic_tasks(sender, **kwargs):
         crawl_and_index.s(),
         name='Crawl and index jobs daily'
     )
-    # For testing, let's also run it 60 seconds after startup
-    sender.add_periodic_task(60.0, crawl_and_index.s(), name='Crawl and index on startup (test)')
+    # For testing, let's also run it once on startup (disabled for production)
+    # sender.add_periodic_task(60.0, crawl_and_index.s(), name='Crawl and index on startup (test)')

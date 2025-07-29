@@ -1,0 +1,10 @@
+# Lightweight requirements (no ML models) - fast build ~1-2 min
+requests
+beautifulsoup4
+fastapi
+uvicorn[standard]
+redis
+celery
+pinecone>=3.0.0
+python-dotenv
+pymongo

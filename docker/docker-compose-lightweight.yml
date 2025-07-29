@@ -5,11 +5,16 @@ services:
       - "6379:6379"
 
   app:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile-lightweight
     ports:
       - "8000:8000"
     volumes:
       - .:/app  # Mount local code so changes are reflected without rebuilding
+    environment:
+      - APP_MODE=lightweight
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     depends_on:
@@ -17,9 +22,14 @@ services:
     command: "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile-lightweight
     volumes:
       - .:/app
+    environment:
+      - APP_MODE=lightweight
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     depends_on:

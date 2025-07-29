@@ -4,7 +4,18 @@
       "Bash(docker-compose up:*)",
       "Bash(docker-compose restart:*)",
       "Bash(docker-compose logs:*)",
-      "Bash(docker-compose build:*)"
+      "Bash(docker-compose build:*)",
+      "Bash(cp:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker system prune:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(set APP_MODE=lightweight)",
+      "Bash(mkdir:*)",
+      "Bash(move config.py config/)",
+      "Bash(move .env config/)",
+      "Bash(move requirements*.txt requirements/)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }

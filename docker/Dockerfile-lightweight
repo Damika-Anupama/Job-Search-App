@@ -1,0 +1,20 @@
+# Lightweight mode - No ML models (fast build ~1-2 min)
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy lightweight requirements and install dependencies
+COPY requirements-lightweight.txt .
+RUN pip install --no-cache-dir -r requirements-lightweight.txt
+
+# Copy application code
+COPY . .
+
+# Set environment variables for lightweight mode
+ENV APP_MODE=lightweight
+
+# Expose the port the app runs on
+EXPOSE 8000
+
+# Command to run the uvicorn server for FastAPI
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

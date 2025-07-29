@@ -1,0 +1,13 @@
+# Cloud ML requirements with HuggingFace inference (medium build ~5-8 min)
+requests
+beautifulsoup4
+fastapi
+uvicorn[standard]
+redis
+celery
+pinecone>=3.0.0
+python-dotenv
+numpy
+sentence-transformers  # For local fallback
+torch --index-url https://download.pytorch.org/whl/cpu  # For local fallback
+pymongo
