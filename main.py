@@ -5,6 +5,7 @@ import redis
 import json
 from config import REDIS_URL
 from indexing import get_embedding, index as pinecone_index
+from tasks import crawl_and_index
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -128,3 +129,13 @@ def read_root():
             "Vector similarity matching"
         ]
     }
+
+@app.post("/trigger-indexing", status_code=202)
+def trigger_indexing_job():
+    """
+    Triggers the background task to scrape and index jobs.
+    Returns immediately with a 202 Accepted response.
+    """
+    print("Received request to trigger indexing job.")
+    crawl_and_index.delay() # Use .delay() to send the task to the Celery worker
+    return {"message": "Job indexing task has been triggered and is running in the background."}

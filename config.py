@@ -12,6 +12,8 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "job-search-index")
 
 # Hugging Face Configuration (currently for the mock, but ready for the real one)
+HF_INFERENCE_API = os.getenv("HF_INFERENCE_API")
+HF_TOKEN = os.getenv("HF_TOKEN")
 HF_MODEL_DIMENSION = 768 # Dimension for nomic-embed-text-v1.5
 
 # Scraping Configuration

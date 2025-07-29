@@ -1,12 +1,33 @@
+import requests
 import numpy as np
 from pinecone import Pinecone
-from config import PINECONE_API_KEY, PINECONE_INDEX_NAME, HF_MODEL_DIMENSION
+from config import PINECONE_API_KEY, PINECONE_INDEX_NAME, HF_MODEL_DIMENSION, HF_INFERENCE_API, HF_TOKEN
 
-# --- Mock Embedding Function ---
 def get_embedding(text: str) -> list[float]:
-    """Generates a fake, random vector of the correct dimension."""
-    return np.random.rand(HF_MODEL_DIMENSION).tolist()
-# --- End Mock Function ---
+    """
+    Generates a vector embedding for the given text using a Hugging Face Inference API.
+    """
+    if not HF_INFERENCE_API or not HF_TOKEN:
+        # Fallback to mock if secrets aren't set
+        print("Warning: Hugging Face credentials not set. Using MOCK embeddings.")
+        return np.random.rand(HF_MODEL_DIMENSION).tolist()
+
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    payload = {"inputs": text}
+    
+    try:
+        response = requests.post(HF_INFERENCE_API, headers=headers, json=payload)
+        response.raise_for_status() # Raise an exception for bad status codes
+        result = response.json()
+        # The actual embedding is often nested inside the response
+        if isinstance(result, list) and isinstance(result[0], list):
+            return result[0]
+        else:
+            raise ValueError(f"Unexpected API response format: {result}")
+    except requests.RequestException as e:
+        print(f"Error calling Hugging Face API: {e}")
+        # Return a zero vector on failure to avoid crashing the whole process
+        return [0.0] * HF_MODEL_DIMENSION
 
 
 # --- Pinecone Initialization (New Object-Oriented Way) ---
