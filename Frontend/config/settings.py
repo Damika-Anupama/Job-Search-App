@@ -8,8 +8,8 @@ from typing import Dict, Any
 class FrontendSettings:
     """Frontend application settings"""
     
-    # Backend API Configuration
-    BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8001")
+    # Backend API Configuration  
+    BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://backend:8000")
     API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))
     
     # UI Configuration

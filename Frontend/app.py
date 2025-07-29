@@ -284,7 +284,8 @@ def render_search_page():
         
         if search_response and search_response['success']:
             search_data = search_response['data']
-            results = search_data.get('results', [])
+            # Handle different response formats from test backend
+            results = search_data.get('jobs', search_data.get('results', []))
             
             # Update session state
             st.session_state.last_search_results = results
@@ -295,7 +296,7 @@ def render_search_page():
             })
             
             # Display results summary
-            total_found = search_data.get('total_found', 0)
+            total_found = search_data.get('total_results', search_data.get('total_found', len(results)))
             reranked = search_data.get('reranked', False)
             source = search_data.get('source', 'unknown')
             
