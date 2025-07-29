@@ -8,3 +8,5 @@ celery
 pinecone>=3.0.0
 python-dotenv
 pymongo
+numpy
+pandas

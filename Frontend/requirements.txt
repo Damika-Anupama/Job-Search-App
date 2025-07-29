@@ -1,0 +1,9 @@
+# Frontend requirements for Streamlit application
+streamlit>=1.28.0
+requests>=2.31.0
+aiohttp>=3.8.0
+python-dotenv>=1.0.0
+
+# Optional: For enhanced charts and visualizations
+plotly>=5.15.0
+pandas>=2.0.0

@@ -1,0 +1,59 @@
+# Development setup - lightweight backend + containerized frontend
+version: '3.8'
+
+services:
+  # Redis for caching
+  redis:
+    image: "redis/redis-stack-server:latest"
+    container_name: job-search-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    restart: unless-stopped
+
+  # Lightweight backend for development
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-lightweight
+    container_name: job-search-backend-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_MODE=lightweight
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ../config/.env
+    depends_on:
+      - redis
+    volumes:
+      - ../:/app  # Live code reloading for development
+    restart: unless-stopped
+    command: "uvicorn test_backend_minimal:app --host 0.0.0.0 --port 8000 --reload"
+
+  # Frontend for development
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: job-search-frontend-dev
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_BASE_URL=http://backend:8000
+      - API_TIMEOUT=30
+    depends_on:
+      - backend
+    volumes:
+      - ../frontend:/app  # Live code reloading for development
+    restart: unless-stopped
+    command: "streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.fileWatcherType=poll"
+
+volumes:
+  redis_dev_data:
+    driver: local
+
+networks:
+  default:
+    name: job-search-dev-network

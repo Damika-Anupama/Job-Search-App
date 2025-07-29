@@ -1,0 +1,95 @@
+# Full-stack deployment with containerized frontend and backend
+version: '3.8'
+
+services:
+  # Redis for caching
+  redis:
+    image: "redis/redis-stack-server:latest"
+    container_name: job-search-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API service
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: job-search-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_MODE=full-ml
+      - REDIS_URL=redis://redis:6379/0
+      - PINECONE_INDEX_NAME=job-search-384
+    env_file:
+      - ../config/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../:/app  # For development - remove in production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Celery worker for background tasks
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: job-search-worker
+    environment:
+      - APP_MODE=full-ml
+      - REDIS_URL=redis://redis:6379/0
+      - PINECONE_INDEX_NAME=job-search-384
+    env_file:
+      - ../config/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../:/app  # For development - remove in production
+    restart: unless-stopped
+    command: "celery -A src.job_search.scraping.tasks.celery_app worker --loglevel=info -B"
+
+  # Frontend Streamlit application
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: job-search-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_BASE_URL=http://backend:8000
+      - API_TIMEOUT=30
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: job-search-network
