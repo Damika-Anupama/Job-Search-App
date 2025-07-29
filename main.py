@@ -6,6 +6,7 @@ import json
 from config import REDIS_URL
 from indexing import get_embedding, index as pinecone_index
 from tasks import crawl_and_index
+from reranker import rerank_search_results
 import re
 
 # Initialize FastAPI app
@@ -106,14 +107,18 @@ class SearchRequest(BaseModel):
 
 class JobResult(BaseModel):
     id: str = Field(description="Unique job posting identifier")
-    score: float = Field(description="Relevance score (0-1, higher is more relevant)")
+    score: float = Field(description="Final relevance score (cross-encoder reranked)")
     text: str = Field(description="Complete job posting text")
+    vector_score: float = Field(default=0.0, description="Original vector similarity score")
+    cross_score: float = Field(default=0.0, description="Cross-encoder reranking score")
 
 class SearchResponse(BaseModel):
     source: str = Field(description="Data source: 'cache' for cached results, 'pinecone' for fresh search")
-    results: List[JobResult] = Field(description="List of relevant job postings")
+    results: List[JobResult] = Field(description="List of relevant job postings (reranked by cross-encoder)")
     total_found: int = Field(description="Total number of jobs found before pagination")
     filters_applied: Dict[str, Any] = Field(description="Summary of filters that were applied")
+    reranked: bool = Field(default=False, description="Whether results were reranked using cross-encoder")
+    candidates_retrieved: int = Field(default=0, description="Number of candidates retrieved for reranking")
 
 def simplified_filter_jobs(jobs, request: SearchRequest):
     """
@@ -191,37 +196,49 @@ def simplified_filter_jobs(jobs, request: SearchRequest):
 @app.post("/search", response_model=SearchResponse)
 def search_jobs(request: SearchRequest):
     """
-    Advanced semantic job search with personalized filtering.
+    🚀 **Advanced Two-Stage Job Search with Cross-Encoder Reranking**
     
-    This endpoint performs semantic search across indexed job postings from multiple sources 
-    including Hacker News, Remote OK, Arbeit Now, and The Muse. Results are filtered based 
-    on your preferences and ranked by relevance score.
+    This endpoint uses a cutting-edge two-stage search process for maximum relevance:
     
-    **Enhanced Features:**
-    - **Semantic search** - finds jobs by meaning, not just keywords
-    - **Location filtering** - specify preferred locations (OR logic)
-    - **Skills filtering** - required skills (AND) and preferred skills (OR) 
-    - **Experience level** - filter by junior, mid, senior, lead positions
-    - **Company size** - startup, mid-size, big tech, enterprise
-    - **Salary filtering** - minimum salary requirements
-    - **Exclusions** - block unwanted keywords (internship, unpaid, etc.)
-    - **Smart scoring** - relevance boosting based on preferences
-    - **Redis caching** - fast repeat queries
+    **🔍 Stage 1: Broad Candidate Selection**
+    - Semantic vector search across 4 job boards (Hacker News, Remote OK, Arbeit Now, The Muse)
+    - Retrieves 8x more candidates than requested (up to 100 jobs)
+    - Fast initial filtering and relevance scoring
     
-    **Example Advanced Searches:**
+    **🎯 Stage 2: Cross-Encoder Reranking** 
+    - Uses pre-trained Cross-Encoder model (ms-marco-MiniLM-L-6-v2)
+    - Provides precise query-document relevance scoring
+    - Dramatically improves result quality vs. vector search alone
+    - Returns top N most relevant jobs after reranking
+    
+    **✨ Key Features:**
+    - **Two-stage search** - Broad retrieval + precise reranking
+    - **Cross-encoder scoring** - More accurate than vector similarity
+    - **Smart filtering** - Location, skills, keyword exclusions
+    - **Relevance boosting** - Preferred skills increase scores
+    - **Intelligent caching** - Fast repeat queries
+    - **Detailed scoring** - Shows both vector and cross-encoder scores
+    
+    **📊 Response includes:**
+    - `reranked`: Whether cross-encoder was used
+    - `candidates_retrieved`: Number of candidates before reranking
+    - `vector_score`: Original semantic similarity score
+    - `cross_score`: Final cross-encoder relevance score
+    
+    **Example Search:**
     ```json
     {
-      "query": "python backend developer",
-      "locations": ["remote", "san francisco"],
-      "required_skills": ["python", "postgresql"],
-      "preferred_skills": ["docker", "aws"],
-      "job_level": ["senior"],
-      "company_size": ["startup", "mid-size"],
-      "min_salary": 120000,
-      "exclude_keywords": ["php", "on-site"],
-      "max_results": 15
+      "query": "python backend developer remote",
+      "locations": ["remote"],
+      "required_skills": ["python"],
+      "preferred_skills": ["django", "docker", "aws"],
+      "exclude_keywords": ["internship", "unpaid"],
+      "max_results": 10
     }
     ```
+    
+    **💡 Pro Tip:** Cross-encoder reranking makes your search results significantly more 
+    relevant - especially for complex, multi-faceted queries!
     """
     if not redis_client:
         raise HTTPException(status_code=503, detail="Redis connection not available.")
@@ -247,23 +264,27 @@ def search_jobs(request: SearchRequest):
                 "source": "cache", 
                 "results": cached_data["results"],
                 "total_found": cached_data["total_found"],
-                "filters_applied": cached_data["filters_applied"]
+                "filters_applied": cached_data["filters_applied"],
+                "reranked": cached_data.get("reranked", False),
+                "candidates_retrieved": cached_data.get("candidates_retrieved", 0)
             }
     except redis.exceptions.RedisError as e:
         print(f"Redis cache read error: {e}")
 
     print(f"Cache MISS for advanced query: '{request.query}'")
 
-    # 2. If not in cache, perform the search
+    # 2. If not in cache, perform the two-stage search
     query_vector = get_embedding(request.query)
 
-    # Query Pinecone with more results to allow for filtering
-    search_top_k = min(100, request.max_results * 5)  # Get extra results for filtering
+    # Stage 1: Broad candidate retrieval from Pinecone
+    # Get more candidates than needed for reranking (candidate selection stage)
+    candidate_top_k = min(100, max(50, request.max_results * 8))  # Get 8x more candidates for reranking
     
     try:
+        print(f"Stage 1: Retrieving {candidate_top_k} candidates from vector search")
         search_result = pinecone_index.query(
             vector=query_vector,
-            top_k=search_top_k,
+            top_k=candidate_top_k,
             include_metadata=True
         )
         
@@ -272,36 +293,78 @@ def search_jobs(request: SearchRequest):
                 "source": "pinecone", 
                 "results": [],
                 "total_found": 0,
-                "filters_applied": cache_params
+                "filters_applied": cache_params,
+                "reranked": False,
+                "candidates_retrieved": 0
             }
         
         total_found = len(search_result['matches'])
+        print(f"Retrieved {total_found} candidates from vector search")
         
-        # Apply simplified filtering
-        filtered_results = simplified_filter_jobs(search_result['matches'], request)
+        # Apply simplified filtering first (before reranking to reduce compute)
+        filtered_candidates = simplified_filter_jobs(search_result['matches'], 
+                                                   # Get more results for reranking
+                                                   type('TempRequest', (), {**request.__dict__, 'max_results': min(50, len(search_result['matches']))})())
+        
+        if not filtered_candidates:
+            return {
+                "source": "pinecone", 
+                "results": [],
+                "total_found": total_found,
+                "filters_applied": cache_params,
+                "reranked": False,
+                "candidates_retrieved": total_found
+            }
+        
+        print(f"Stage 2: Reranking {len(filtered_candidates)} filtered candidates")
+        
+        # Stage 2: Cross-encoder reranking for precise relevance scoring
+        reranked_results = rerank_search_results(
+            query=request.query, 
+            jobs=filtered_candidates, 
+            top_k=request.max_results
+        )
+        
+        print(f"Reranking complete: returning top {len(reranked_results)} results")
+        
+        # Format results for API response
+        final_results = []
+        for job in reranked_results:
+            final_results.append({
+                'id': job['id'],
+                'score': job.get('cross_score', job.get('score', 0.0)),
+                'text': job.get('metadata', {}).get('text', job.get('text', '')),
+                'vector_score': job.get('vector_score', job.get('score', 0.0)),
+                'cross_score': job.get('cross_score', job.get('score', 0.0))
+            })
+        
+        # Prepare response
+        response_data = {
+            "source": "pinecone",
+            "results": final_results,
+            "total_found": total_found,
+            "filters_applied": cache_params,
+            "reranked": True,
+            "candidates_retrieved": len(filtered_candidates)
+        }
+        
+        # Cache the reranked results
+        try:
+            redis_client.set(cache_key, json.dumps({
+                "results": final_results,
+                "total_found": total_found,
+                "filters_applied": cache_params,
+                "reranked": True,
+                "candidates_retrieved": len(filtered_candidates)
+            }), ex=1800)  # Cache for 30 minutes
+        except redis.exceptions.RedisError as e:
+            print(f"Redis cache write error: {e}")
+        
+        return response_data
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error querying Pinecone: {e}")
-
-    # 3. Prepare response data
-    response_data = {
-        "source": "pinecone",
-        "results": filtered_results,
-        "total_found": total_found,
-        "filters_applied": cache_params
-    }
-
-    # 4. Store the result in cache
-    try:
-        redis_client.set(cache_key, json.dumps({
-            "results": filtered_results,
-            "total_found": total_found,
-            "filters_applied": cache_params
-        }), ex=1800)  # Cache for 30 minutes (shorter for personalized results)
-    except redis.exceptions.RedisError as e:
-        print(f"Redis cache write error: {e}")
-
-    return response_data
+        print(f"Error in two-stage search: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in search pipeline: {e}")
 
 @app.get("/", 
     summary="API Health Check",

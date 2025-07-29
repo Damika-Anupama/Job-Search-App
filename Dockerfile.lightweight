@@ -1,0 +1,23 @@
+# Lightweight alternative using pre-built PyTorch base
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+
+WORKDIR /app
+
+# Install only additional requirements (PyTorch already included)
+RUN pip install --no-cache-dir \
+    requests \
+    beautifulsoup4 \
+    fastapi \
+    uvicorn[standard] \
+    redis \
+    celery \
+    pinecone-client>=3.0.0 \
+    python-dotenv \
+    numpy \
+    sentence-transformers
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

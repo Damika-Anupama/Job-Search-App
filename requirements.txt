@@ -1,3 +1,4 @@
+# Minimal requirements - much faster build
 requests
 beautifulsoup4
 fastapi
@@ -7,3 +8,6 @@ celery
 pinecone>=3.0.0
 python-dotenv
 numpy
+# Lightweight ML alternatives (uncomment if needed)
+# sentence-transformers
+# torch --index-url https://download.pytorch.org/whl/cpu

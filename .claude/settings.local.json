@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(docker-compose up:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose build:*)"
     ],
     "deny": []
   }
