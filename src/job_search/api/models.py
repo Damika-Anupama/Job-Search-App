@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Search API Models
 class SearchRequest(BaseModel):
-    """Request model for job search"""
+    """Enhanced request model for job search with NER-based filtering"""
     query: str = Field(
         ..., 
         description="Search query to find relevant job postings",
@@ -44,14 +44,86 @@ class SearchRequest(BaseModel):
         le=50,
         description="Maximum number of results to return (1-50)"
     )
+    
+    # NER-based metadata filters
+    experience_level: Optional[str] = Field(
+        default=None,
+        description="Filter by experience level: entry, mid, senior, executive",
+        examples=["senior", "entry"]
+    )
+    min_experience_years: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=30,
+        description="Minimum years of experience required"
+    )
+    max_experience_years: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=30,
+        description="Maximum years of experience required"
+    )
+    min_salary: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Minimum salary requirement (annual USD)"
+    )
+    max_salary: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Maximum salary range (annual USD)"
+    )
+    remote_only: Optional[bool] = Field(
+        default=None,
+        description="Filter for remote work opportunities only"
+    )
+    has_salary_info: Optional[bool] = Field(
+        default=None,
+        description="Filter for jobs that include salary information"
+    )
+    required_education: List[str] = Field(
+        default=[],
+        description="Required education levels or degrees",
+        examples=[["bachelor", "master"], ["computer science"]]
+    )
+    required_benefits: List[str] = Field(
+        default=[],
+        description="Required benefits or perks",
+        examples=[["health insurance", "401k"], ["remote work"]]
+    )
 
 class JobResult(BaseModel):
-    """Individual job search result"""
+    """Enhanced individual job search result with NER metadata"""
     id: str = Field(description="Unique job posting identifier")
     score: float = Field(description="Final relevance score")
     text: str = Field(description="Complete job posting text")
     vector_score: float = Field(default=0.0, description="Vector similarity score")
     cross_score: float = Field(default=0.0, description="Cross-encoder score")
+    
+    # Basic job information
+    title: Optional[str] = Field(default=None, description="Job title")
+    company: Optional[str] = Field(default=None, description="Company name")
+    location: Optional[str] = Field(default=None, description="Job location")
+    url: Optional[str] = Field(default=None, description="Job posting URL")
+    source: Optional[str] = Field(default=None, description="Job board source")
+    posted_date: Optional[str] = Field(default=None, description="Date job was posted")
+    
+    # NER-extracted metadata
+    extracted_skills: List[str] = Field(default=[], description="Skills extracted from job description")
+    experience_years: Optional[int] = Field(default=None, description="Required years of experience")
+    experience_level: Optional[str] = Field(default=None, description="Experience level (entry/mid/senior/executive)")
+    salary_min: Optional[int] = Field(default=None, description="Minimum salary (USD)")
+    salary_max: Optional[int] = Field(default=None, description="Maximum salary (USD)")
+    salary_amount: Optional[int] = Field(default=None, description="Single salary amount (USD)")
+    remote_work: Optional[bool] = Field(default=False, description="Supports remote work")
+    extracted_locations: List[str] = Field(default=[], description="Locations extracted from description")
+    education_requirements: List[str] = Field(default=[], description="Education requirements")
+    benefits: List[str] = Field(default=[], description="Job benefits and perks")
+    
+    # Metadata quality indicators
+    skills_count: int = Field(default=0, description="Number of skills extracted")
+    has_salary_info: bool = Field(default=False, description="Whether salary information was found")
+    has_experience_info: bool = Field(default=False, description="Whether experience info was found")
 
 class SearchResponse(BaseModel):
     """Response model for job search"""

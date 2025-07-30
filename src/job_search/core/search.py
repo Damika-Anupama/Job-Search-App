@@ -466,7 +466,7 @@ class SearchService:
         return min(1.0, cross_score)
     
     def _build_cache_params(self, request: SearchRequest) -> Dict[str, Any]:
-        """Build cache parameters dictionary"""
+        """Build cache parameters dictionary with NER filter support"""
         return {
             "query": request.query.lower().strip(),
             "locations": sorted(request.locations),
@@ -474,7 +474,18 @@ class SearchService:
             "preferred_skills": sorted(request.preferred_skills),
             "exclude_keywords": sorted(request.exclude_keywords),
             "max_results": request.max_results,
-            "mode": settings.APP_MODE.value
+            "mode": settings.APP_MODE.value,
+            
+            # NER-based filters
+            "experience_level": request.experience_level,
+            "min_experience_years": request.min_experience_years,
+            "max_experience_years": request.max_experience_years,
+            "min_salary": request.min_salary,
+            "max_salary": request.max_salary,
+            "remote_only": request.remote_only,
+            "has_salary_info": request.has_salary_info,
+            "required_education": sorted(request.required_education),
+            "required_benefits": sorted(request.required_benefits)
         }
     
     def _get_cached_result(self, cache_key: str) -> SearchResponse:
@@ -511,11 +522,12 @@ class SearchService:
             logger.warning(f"Redis cache write error: {e}")
     
     def _filter_jobs(self, jobs: List[Dict], request: SearchRequest) -> List[Dict]:
-        """Apply filtering logic to job results"""
+        """Apply enhanced filtering logic with NER metadata support"""
         filtered_jobs = []
         
         for job in jobs:
-            job_text_lower = job['metadata']['text'].lower()
+            metadata = job['metadata']
+            job_text_lower = metadata['text'].lower()
             should_include = True
             relevance_boost = 0
             
@@ -529,34 +541,121 @@ class SearchService:
             if not should_include:
                 continue
             
-            # Check location requirements (OR logic)
+            # Experience level filtering (NER-based)
+            if request.experience_level:
+                job_experience_level = metadata.get('experience_level')
+                if job_experience_level and job_experience_level.lower() != request.experience_level.lower():
+                    continue
+                elif job_experience_level:
+                    relevance_boost += 0.2
+            
+            # Experience years filtering (NER-based)
+            if request.min_experience_years or request.max_experience_years:
+                job_experience_years = metadata.get('experience_years')
+                if job_experience_years:
+                    if request.min_experience_years and job_experience_years < request.min_experience_years:
+                        continue
+                    if request.max_experience_years and job_experience_years > request.max_experience_years:
+                        continue
+                    relevance_boost += 0.15
+            
+            # Salary filtering (NER-based)
+            if request.min_salary or request.max_salary:
+                job_salary_min = metadata.get('salary_min')
+                job_salary_max = metadata.get('salary_max')
+                job_salary_amount = metadata.get('salary_amount')
+                
+                # Get the salary range for comparison
+                job_min = job_salary_min or job_salary_amount
+                job_max = job_salary_max or job_salary_amount
+                
+                if job_min or job_max:
+                    if request.min_salary and job_max and job_max < request.min_salary:
+                        continue
+                    if request.max_salary and job_min and job_min > request.max_salary:
+                        continue
+                    relevance_boost += 0.1
+            
+            # Remote work filtering (NER-based)
+            if request.remote_only:
+                if not metadata.get('remote_work', False):
+                    continue
+                relevance_boost += 0.2
+            
+            # Salary info requirement (NER-based)
+            if request.has_salary_info:
+                if not metadata.get('has_salary_info', False):
+                    continue
+                relevance_boost += 0.05
+            
+            # Check location requirements (enhanced with NER)
+            location_match = False
             if request.locations:
-                location_found = False
+                # Check both original location and extracted locations
                 for location in request.locations:
-                    if location.lower() in job_text_lower:
-                        location_found = True
+                    location_lower = location.lower()
+                    if (location_lower in job_text_lower or 
+                        any(location_lower in loc.lower() for loc in metadata.get('extracted_locations', []))):
+                        location_match = True
                         relevance_boost += 0.15
                         break
-                if not location_found:
+                if not location_match:
                     continue
             
-            # Check required skills (AND logic)
+            # Check required skills (enhanced with NER)
             if request.required_skills:
-                all_required_found = True
+                extracted_skills = [skill.lower() for skill in metadata.get('skills', [])]
+                skills_found = 0
                 for skill in request.required_skills:
-                    if skill.lower() not in job_text_lower:
-                        all_required_found = False
-                        break
-                if not all_required_found:
+                    skill_lower = skill.lower()
+                    if (skill_lower in job_text_lower or skill_lower in extracted_skills):
+                        skills_found += 1
+                
+                if skills_found < len(request.required_skills):
                     continue
                 else:
                     relevance_boost += 0.25
             
-            # Check preferred skills (OR logic)
+            # Check preferred skills (enhanced with NER)
             if request.preferred_skills:
+                extracted_skills = [skill.lower() for skill in metadata.get('skills', [])]
+                preferred_matches = 0
                 for skill in request.preferred_skills:
-                    if skill.lower() in job_text_lower:
+                    skill_lower = skill.lower()
+                    if (skill_lower in job_text_lower or skill_lower in extracted_skills):
+                        preferred_matches += 1
                         relevance_boost += 0.1
+            
+            # Education filtering (NER-based)
+            if request.required_education:
+                job_education = [edu.lower() for edu in metadata.get('education', [])]
+                education_match = any(
+                    any(req_edu.lower() in job_edu for job_edu in job_education)
+                    for req_edu in request.required_education
+                )
+                if not education_match:
+                    # Fallback to text search
+                    education_match = any(
+                        req_edu.lower() in job_text_lower 
+                        for req_edu in request.required_education
+                    )
+                if not education_match:
+                    continue
+                relevance_boost += 0.1
+            
+            # Benefits filtering (NER-based)
+            if request.required_benefits:
+                job_benefits = [benefit.lower() for benefit in metadata.get('benefits', [])]
+                benefits_found = 0
+                for benefit in request.required_benefits:
+                    benefit_lower = benefit.lower()
+                    if (benefit_lower in job_text_lower or 
+                        any(benefit_lower in job_benefit for job_benefit in job_benefits)):
+                        benefits_found += 1
+                
+                if benefits_found < len(request.required_benefits):
+                    continue
+                relevance_boost += 0.1
             
             # Apply relevance boost
             boosted_score = min(1.0, job['score'] + relevance_boost)
@@ -564,7 +663,8 @@ class SearchService:
             filtered_jobs.append({
                 'id': job['id'],
                 'score': boosted_score,
-                'text': job['metadata']['text']
+                'text': metadata['text'],
+                'metadata': metadata
             })
         
         # Sort by boosted score
@@ -572,15 +672,42 @@ class SearchService:
         return filtered_jobs[:min(50, len(filtered_jobs))]
     
     def _format_results(self, reranked_results: List[Dict]) -> List[JobResult]:
-        """Format reranked results for API response"""
+        """Format reranked results for API response with NER metadata"""
         final_results = []
         for job in reranked_results:
+            metadata = job.get('metadata', {})
+            
             final_results.append(JobResult(
                 id=job['id'],
                 score=job.get('cross_score', job.get('score', 0.0)),
-                text=job.get('metadata', {}).get('text', job.get('text', '')),
+                text=metadata.get('text', job.get('text', '')),
                 vector_score=job.get('vector_score', job.get('score', 0.0)),
-                cross_score=job.get('cross_score', job.get('score', 0.0))
+                cross_score=job.get('cross_score', job.get('score', 0.0)),
+                
+                # Basic job information
+                title=metadata.get('title'),
+                company=metadata.get('company'),
+                location=metadata.get('location'),
+                url=metadata.get('url'),
+                source=metadata.get('source'),
+                posted_date=metadata.get('posted_date'),
+                
+                # NER-extracted metadata
+                extracted_skills=metadata.get('skills', []),
+                experience_years=metadata.get('experience_years'),
+                experience_level=metadata.get('experience_level'),
+                salary_min=metadata.get('salary_min'),
+                salary_max=metadata.get('salary_max'),
+                salary_amount=metadata.get('salary_amount'),
+                remote_work=metadata.get('remote_work', False),
+                extracted_locations=metadata.get('extracted_locations', []),
+                education_requirements=metadata.get('education', []),
+                benefits=metadata.get('benefits', []),
+                
+                # Metadata quality indicators
+                skills_count=metadata.get('skills_count', 0),
+                has_salary_info=metadata.get('has_salary_info', False),
+                has_experience_info=metadata.get('has_experience_info', False)
             ))
         return final_results
     

@@ -7,8 +7,10 @@ A comprehensive, multi-source job search platform with ML-powered semantic searc
 ### 🔍 **Intelligent Job Search**
 - **Multi-Source Aggregation**: Hacker News "Who is Hiring?", Remote OK, Arbeit Now, The Muse
 - **Semantic Search**: Find jobs by meaning, not just keywords
-- **Smart Filtering**: Location, skills, experience level, salary requirements
+- **Named Entity Recognition (NER)**: Extracts structured metadata from job descriptions
+- **Smart Filtering**: Location, skills, experience level, salary requirements, remote work
 - **Cross-Encoder Reranking**: Advanced relevance scoring for better results
+- **Metadata-Based Search**: Filter by extracted skills, salary ranges, experience levels, benefits
 
 ### 👤 **Personal Job Tracking**
 - **Save Jobs**: Build your personal job pipeline
@@ -39,7 +41,8 @@ job-search-app/
 │   ├── ml/                  # Machine learning services
 │   │   ├── embeddings.py    # Text embedding generation
 │   │   ├── reranking.py     # Cross-encoder reranking
-│   │   └── indexing.py      # Vector database operations
+│   │   ├── indexing.py      # Vector database operations
+│   │   └── ner.py           # Named Entity Recognition metadata extraction
 │   └── scraping/            # Data collection modules
 │       ├── scrapers.py      # Job board scrapers
 │       ├── tasks.py         # Celery background tasks
@@ -90,6 +93,9 @@ python app.py
 # Install ML dependencies
 pip install -r requirements/ml.txt
 
+# Download spaCy English model for NER (optional but recommended)
+python -m spacy download en_core_web_sm
+
 # Set mode in config/.env  
 APP_MODE=full-ml
 
@@ -101,6 +107,9 @@ python app.py
 ```bash
 # Install ML dependencies
 pip install -r requirements/ml.txt
+
+# Download spaCy English model for NER (optional but recommended)
+python -m spacy download en_core_web_sm
 
 # Configure HuggingFace credentials in config/.env
 HF_INFERENCE_API=your_hf_endpoint
@@ -132,6 +141,63 @@ docker-compose -f docker/docker-compose-fullstack.yml logs -f
 - ⏰ **Celery Scheduler** - Periodic task scheduling
 - 📊 **Structured Logging** - All services log to `logs/` directory
 
+## 🧠 **Advanced NER-Powered Search**
+
+### **Extracted Metadata Categories**
+
+The application automatically extracts structured metadata from job descriptions using Named Entity Recognition:
+
+#### **🔧 Technical Skills**
+- Programming languages (Python, JavaScript, Java, etc.)
+- Frameworks (React, Django, FastAPI, etc.)
+- Databases (PostgreSQL, MongoDB, Redis, etc.)
+- Cloud platforms (AWS, Azure, GCP, etc.)
+- Tools and technologies (Docker, Kubernetes, Git, etc.)
+
+#### **💼 Experience Requirements**
+- Experience level (entry, mid, senior, executive)
+- Years of experience (1-2 years, 5+ years, etc.)
+- Seniority indicators (junior, senior, lead, principal)
+
+#### **💰 Salary Information**
+- Salary ranges ($100k - $150k)
+- Fixed amounts ($120,000)
+- Compensation details extracted from text
+- Smart filtering to avoid false positives (401k ≠ salary)
+
+#### **📍 Location & Remote Work**
+- Geographic locations (cities, states, countries)
+- Remote work opportunities detection
+- Hybrid work arrangements
+- Location flexibility indicators
+
+#### **🎓 Education & Benefits**
+- Degree requirements (Bachelor's, Master's, PhD)
+- Field of study (Computer Science, Engineering)
+- Benefits and perks (health insurance, 401k, PTO)
+- Professional development opportunities
+
+### **Search Enhancement Examples**
+
+```bash
+# Find senior Python jobs with salary info, remote work
+POST /search/ {
+  "query": "python backend developer", 
+  "experience_level": "senior",
+  "remote_only": true,
+  "has_salary_info": true,
+  "min_salary": 120000
+}
+
+# Filter by specific benefits and education
+POST /search/ {
+  "query": "machine learning engineer",
+  "required_education": ["computer science"],
+  "required_benefits": ["health insurance", "stock options"],
+  "min_experience_years": 3
+}
+```
+
 ## 📚 API Documentation
 
 Once running, visit:
@@ -141,7 +207,7 @@ Once running, visit:
 
 ### Key Endpoints
 
-#### 🔍 **Search Jobs**
+#### 🔍 **Enhanced Search Jobs with NER Filtering**
 ```http
 POST /search/
 ```
@@ -152,7 +218,18 @@ POST /search/
   "required_skills": ["python"],
   "preferred_skills": ["django", "docker"],
   "exclude_keywords": ["internship"],
-  "max_results": 10
+  "max_results": 10,
+  
+  // NEW: NER-based metadata filters
+  "experience_level": "senior",
+  "min_experience_years": 3,
+  "max_experience_years": 8,
+  "min_salary": 100000,
+  "max_salary": 180000,
+  "remote_only": true,
+  "has_salary_info": true,
+  "required_education": ["bachelor"],
+  "required_benefits": ["health insurance", "401k"]
 }
 ```
 

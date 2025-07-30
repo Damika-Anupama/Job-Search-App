@@ -17,3 +17,6 @@ tokenizers>=0.13.0
 
 # Cross-encoder reranking (if used)
 # cross-encoder>=1.2.0
+
+# Named Entity Recognition (NER)
+spacy>=3.7.0
