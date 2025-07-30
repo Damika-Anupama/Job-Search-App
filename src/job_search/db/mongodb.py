@@ -249,7 +249,7 @@ class MongoDBService:
         try:
             user = self.get_user(user_id)
             if not user:
-                return {"total": 0, "by_status": {}}
+                return {"total": 0, "by_status": {}, "recent_activity": 0}
             
             saved_jobs = user.get("saved_jobs", [])
             total = len(saved_jobs)

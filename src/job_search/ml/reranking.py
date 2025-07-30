@@ -12,14 +12,17 @@ try:
     CROSS_ENCODER_AVAILABLE = True
 except ImportError:
     CROSS_ENCODER_AVAILABLE = False
-    print("Warning: sentence-transformers not available. Cross-encoder reranking disabled.")
+
 import logging
 from typing import List, Dict, Tuple
 import time
+from ..core.logging_config import get_logger
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+if not CROSS_ENCODER_AVAILABLE:
+    logger.warning("⚠️ sentence-transformers not available. Cross-encoder reranking disabled.")
 
 class JobReranker:
     """

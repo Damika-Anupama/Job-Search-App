@@ -20,7 +20,7 @@ if current_dir not in sys.path:
 
 from config.settings import settings
 from utils.api_client import api_client, handle_api_error, run_with_spinner, APIException
-from components.job_card import render_job_card, render_saved_job_card
+from components.job_card import render_job_card, render_saved_job_card, extract_job_info
 
 # Page configuration
 st.set_page_config(
@@ -336,9 +336,14 @@ def render_search_page():
                         )
                         
                         if save_response and save_response['success']:
-                            st.success("💾 Job saved successfully!")
-                            # Refresh saved jobs
+                            # Enhanced success message with more details
+                            job_title = extract_job_info(job.get('text', '')).get('title', 'Job')
+                            st.success(f"✅ **{job_title}** saved successfully to your job tracker!")
+                            st.info(f"🔗 View all your saved jobs in the **📊 Saved Jobs** page")
+                            
+                            # Refresh saved jobs in background to update session state
                             refresh_saved_jobs()
+                            # Trigger a partial rerun to update just the job cards
                             st.rerun()
                         
                     elif action == "similar":
@@ -350,6 +355,44 @@ def render_search_page():
     
     elif search_clicked and not query.strip():
         st.error("⚠️ Please enter a search query to find jobs.")
+    
+    # Display previous search results if available (after page rerun)
+    elif not search_clicked and st.session_state.last_search_results:
+        st.markdown("## 📋 Previous Search Results")
+        st.info("ℹ️ Showing your last search results. Use the search form above to run a new search.")
+        
+        for i, job in enumerate(st.session_state.last_search_results):
+            action = render_job_card(
+                job, 
+                st.session_state.user_id, 
+                show_save_button=True,
+                saved_jobs=st.session_state.saved_jobs,
+                key_prefix=f"prev_search_{i}"
+            )
+            
+            if action == "save":
+                # Save job via API
+                save_response = handle_api_error(
+                    api_client.save_job,
+                    st.session_state.user_id,
+                    job.get('id', str(uuid.uuid4())),
+                    job
+                )
+                
+                if save_response and save_response['success']:
+                    # Enhanced success message with more details
+                    job_title = extract_job_info(job.get('text', '')).get('title', 'Job')
+                    st.success(f"✅ **{job_title}** saved successfully to your job tracker!")
+                    st.info(f"🔗 View all your saved jobs in the **📊 Saved Jobs** page")
+                    
+                    # Refresh saved jobs in background to update session state
+                    refresh_saved_jobs()
+                    # Trigger a partial rerun to update just the job cards
+                    st.rerun()
+                
+            elif action == "similar":
+                # Find similar jobs (could be implemented)
+                st.info("🔍 Similar job search feature coming soon!")
     
     # Show recent search history
     if st.session_state.search_history:
@@ -441,7 +484,10 @@ def render_saved_jobs_page():
                     )
                     
                     if remove_response and remove_response['success']:
-                        st.success("🗑️ Job removed successfully!")
+                        # Get job title for better confirmation
+                        job_data = job.get('job_data', {})
+                        job_title = extract_job_info(job_data.get('text', '')).get('title', 'Job')
+                        st.success(f"🗑️ **{job_title}** removed from your saved jobs!")
                         refresh_saved_jobs()
                         st.rerun()
                 
@@ -456,7 +502,13 @@ def render_saved_jobs_page():
                     )
                     
                     if update_response and update_response['success']:
-                        st.success("💾 Job status updated successfully!")
+                        # Get job title and status for better confirmation
+                        job_data = job.get('job_data', {})
+                        job_title = extract_job_info(job_data.get('text', '')).get('title', 'Job')
+                        status_display = action_data['status'].title()
+                        st.success(f"💾 **{job_title}** status updated to **{status_display}**!")
+                        if action_data['notes']:
+                            st.info(f"📝 Note added: {action_data['notes']}")
                         refresh_saved_jobs()
                         st.rerun()
     
@@ -468,7 +520,8 @@ def render_saved_jobs_page():
         
         # Quick link to search
         if st.button("🔍 Go to Job Search", use_container_width=True):
-            st.switch_page("🔍 Job Search")
+            st.session_state.current_page = "🔍 Job Search"
+            st.rerun()
 
 def render_analytics_page():
     """Render analytics and insights page"""
@@ -641,6 +694,11 @@ def main():
     
     # Render sidebar and get selected page
     selected_page = render_sidebar()
+    
+    # Override with session state if navigation was triggered
+    if hasattr(st.session_state, 'current_page') and st.session_state.current_page:
+        selected_page = st.session_state.current_page
+        st.session_state.current_page = None  # Reset after use
     
     # Render the selected page
     if selected_page == "🔍 Job Search":

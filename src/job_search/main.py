@@ -7,11 +7,12 @@ This is the new, clean main application file that assembles all components.
 import logging
 from fastapi import FastAPI
 from .core.config import settings
+from .core.logging_config import setup_logging, get_logger
 from .api.routes import health, search, users
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_logging()
+logger = get_logger(__name__)
 
 def get_app_description():
     """Generate mode-specific application description"""
@@ -64,6 +65,8 @@ def get_app_description():
 def create_app() -> FastAPI:
     """Create and configure FastAPI application"""
     
+    logger.info(f"Creating FastAPI application in {settings.APP_MODE.value} mode")
+    
     app = FastAPI(
         title=f"Job Search API ({settings.APP_MODE.value.upper()})",
         description=get_app_description(),
@@ -73,9 +76,21 @@ def create_app() -> FastAPI:
     )
     
     # Include routers
+    logger.info("Including API routers")
     app.include_router(health.router)
     app.include_router(search.router)
     app.include_router(users.router)
+    
+    # Add startup event
+    @app.on_event("startup")
+    async def startup_event():
+        logger.info("🚀 Job Search API starting up")
+        logger.info(f"📊 Mode: {settings.APP_MODE.value}")
+        logger.info(f"🔗 Docs available at: /docs")
+        
+    @app.on_event("shutdown") 
+    async def shutdown_event():
+        logger.info("🛑 Job Search API shutting down")
     
     # Root endpoint
     @app.get("/")

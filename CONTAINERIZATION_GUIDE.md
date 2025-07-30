@@ -31,18 +31,20 @@ docker-compose -f docker-compose-development.yml up --build
 - 🟢 **Frontend**: localhost:8501 (Streamlit UI)
 
 ### **Option 2: Full Production** 🏭
-**Complete ML-powered stack**
+**Complete ML-powered stack with separated services**
 
 ```bash
 cd docker
-docker-compose -f docker-compose-fullstack.yml up --build
+docker-compose -f docker-compose-fullstack.yml up --build -d
 ```
 
 **Services:**
-- 🔴 **Redis**: localhost:6379 (caching + session)
-- 🟡 **Backend**: localhost:8000 (full ML features)
-- 🟠 **Worker**: Celery background tasks
-- 🟢 **Frontend**: localhost:8501 (production UI)
+- 🔴 **Redis**: localhost:6379 (caching + session storage)
+- 🟡 **Backend**: localhost:8000 (full ML features + structured logging)
+- ⚙️ **Celery Worker**: Background job processing (scalable)
+- ⏰ **Celery Scheduler**: Periodic task scheduling (Beat)
+- 🟢 **Frontend**: localhost:8501 (production Streamlit UI)
+- 📊 **Structured Logging**: Centralized logs in `logs/` directory
 
 ## 🔧 **Configuration**
 
@@ -114,16 +116,68 @@ Remove volume mounts in production:
 - Only necessary ports exposed to host
 - Redis not exposed externally in production
 
+## 📊 **Monitoring & Logging**
+
+### **Service Health Monitoring**
+```bash
+# Check all service status
+docker-compose -f docker-compose-fullstack.yml ps
+
+# Run comprehensive health check
+python scripts/monitor_services.py
+
+# Continuous monitoring
+python scripts/monitor_services.py --continuous
+```
+
+### **Structured Logging**
+All services log to the `logs/` directory with structured formatting:
+
+```bash
+# View all logs in real-time
+docker-compose -f docker-compose-fullstack.yml logs -f
+
+# View specific service logs
+docker-compose -f docker-compose-fullstack.yml logs -f backend
+docker-compose -f docker-compose-fullstack.yml logs -f worker
+docker-compose -f docker-compose-fullstack.yml logs -f scheduler
+
+# View application logs directly
+tail -f logs/job_search.log        # Main application logs
+tail -f logs/errors.log            # Error-level logs only
+tail -f logs/scraping.log          # Background task logs
+```
+
+**Log Features:**
+- 🎨 **Colored Console Output** - Easy visual parsing
+- 📁 **File Rotation** - 10MB files, 5 backups per log type
+- 🏷️ **Structured Format** - Timestamp, level, module, function, message
+- 🔍 **Log Levels** - DEBUG, INFO, WARNING, ERROR for filtering
+
+### **Environment-Specific Logging**
+```bash
+# Development: Debug level with file logging
+LOG_LEVEL=DEBUG LOG_TO_FILE=true docker-compose up
+
+# Production: Info level with monitoring
+LOG_LEVEL=INFO ENABLE_CELERY_MONITORING=true docker-compose up
+
+# Testing: Minimal logging
+LOG_LEVEL=WARNING LOG_TO_FILE=false docker-compose up
+```
+
 ## 📈 **Scaling & Performance**
 
 ### **Horizontal Scaling**
 ```bash
-# Scale frontend instances
-docker-compose up --scale frontend=3
+# Scale Celery workers for high job volume
+docker-compose -f docker-compose-fullstack.yml up -d --scale worker=3
 
-# Scale worker instances  
-docker-compose up --scale worker=2
+# Only one scheduler instance should run (avoid duplicates)
+docker-compose -f docker-compose-fullstack.yml up -d --scale scheduler=1
 ```
+
+**Important:** Never scale the scheduler service beyond 1 replica to avoid duplicate periodic tasks.
 
 ### **Resource Limits**
 Add to docker-compose.yml:

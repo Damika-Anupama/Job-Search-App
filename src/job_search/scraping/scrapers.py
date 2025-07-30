@@ -4,6 +4,9 @@ import re
 import xml.etree.ElementTree as ET
 import hashlib
 from datetime import datetime
+from ..core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 def get_job_postings(url):
     """
@@ -22,7 +25,7 @@ def get_job_postings(url):
     job_postings = []
 
     try:
-        print(f"Fetching job postings from: {url}")
+        logger.info(f"📰 Fetching job postings from: {url}")
         response = requests.get(url, headers=headers)
         response.raise_for_status()  # Raise an exception for bad status codes
 
@@ -49,14 +52,14 @@ def get_job_postings(url):
                         'text': text
                     })
 
-        print(f"Successfully found {len(job_postings)} top-level job postings.")
+        logger.info(f"✅ Successfully found {len(job_postings)} top-level job postings.")
         return job_postings
 
     except requests.RequestException as e:
-        print(f"Error: Could not fetch URL. {e}")
+        logger.error(f"❌ Error: Could not fetch URL. {e}")
         return []
     except Exception as e:
-        print(f"An unexpected error occurred during scraping: {e}")
+        logger.error(f"💥 An unexpected error occurred during scraping: {e}")
         return []
 
 def scrape_remoteok_api(url):
@@ -76,7 +79,7 @@ def scrape_remoteok_api(url):
     job_postings = []
     
     try:
-        print(f"Fetching Remote OK jobs from: {url}")
+        logger.info(f"🌍 Fetching Remote OK jobs from: {url}")
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -131,17 +134,17 @@ def scrape_remoteok_api(url):
                     'text': job_text
                 })
         
-        print(f"Successfully found {len(job_postings)} Remote OK job postings.")
+        logger.info(f"✅ Successfully found {len(job_postings)} Remote OK job postings.")
         return job_postings
         
     except ValueError as e:
-        print(f"Error parsing JSON from Remote OK API: {e}")
+        logger.error(f"❌ Error parsing JSON from Remote OK API: {e}")
         return []
     except requests.RequestException as e:
-        print(f"Error fetching Remote OK jobs: {e}")
+        logger.error(f"❌ Error fetching Remote OK jobs: {e}")
         return []
     except Exception as e:
-        print(f"An unexpected error occurred during Remote OK scraping: {e}")
+        logger.error(f"💥 An unexpected error occurred during Remote OK scraping: {e}")
         return []
 
 def scrape_arbeitnow_api(url):
@@ -161,7 +164,7 @@ def scrape_arbeitnow_api(url):
     job_postings = []
     
     try:
-        print(f"Fetching Arbeit Now jobs from: {url}")
+        logger.info(f"💼 Fetching Arbeit Now jobs from: {url}")
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -218,17 +221,17 @@ def scrape_arbeitnow_api(url):
                     'text': job_text
                 })
         
-        print(f"Successfully found {len(job_postings)} Arbeit Now job postings.")
+        logger.info(f"✅ Successfully found {len(job_postings)} Arbeit Now job postings.")
         return job_postings
         
     except ValueError as e:
-        print(f"Error parsing JSON from Arbeit Now API: {e}")
+        logger.error(f"❌ Error parsing JSON from Arbeit Now API: {e}")
         return []
     except requests.RequestException as e:
-        print(f"Error fetching Arbeit Now jobs: {e}")
+        logger.error(f"❌ Error fetching Arbeit Now jobs: {e}")
         return []
     except Exception as e:
-        print(f"An unexpected error occurred during Arbeit Now scraping: {e}")
+        logger.error(f"💥 An unexpected error occurred during Arbeit Now scraping: {e}")
         return []
 
 def scrape_themusedev_api(url):
@@ -248,7 +251,7 @@ def scrape_themusedev_api(url):
     job_postings = []
     
     try:
-        print(f"Fetching The Muse jobs from: {url}")
+        logger.info(f"🎯 Fetching The Muse jobs from: {url}")
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -311,17 +314,17 @@ def scrape_themusedev_api(url):
                     'text': job_text
                 })
         
-        print(f"Successfully found {len(job_postings)} The Muse job postings.")
+        logger.info(f"✅ Successfully found {len(job_postings)} The Muse job postings.")
         return job_postings
         
     except ValueError as e:
-        print(f"Error parsing JSON from The Muse API: {e}")
+        logger.error(f"❌ Error parsing JSON from The Muse API: {e}")
         return []
     except requests.RequestException as e:
-        print(f"Error fetching The Muse jobs: {e}")
+        logger.error(f"❌ Error fetching The Muse jobs: {e}")
         return []
     except Exception as e:
-        print(f"An unexpected error occurred during The Muse scraping: {e}")
+        logger.error(f"💥 An unexpected error occurred during The Muse scraping: {e}")
         return []
 
 def generate_job_hash(job_text):
@@ -362,7 +365,7 @@ def deduplicate_jobs(all_jobs):
         else:
             duplicates_removed += 1
     
-    print(f"Deduplication complete: Removed {duplicates_removed} duplicates, kept {len(deduplicated_jobs)} unique jobs")
+    logger.info(f"🗑️ Deduplication complete: Removed {duplicates_removed} duplicates, kept {len(deduplicated_jobs)} unique jobs")
     return deduplicated_jobs
 
 def filter_jobs(jobs, keywords=None, locations=None, exclude_keywords=None):
@@ -421,7 +424,7 @@ def filter_jobs(jobs, keywords=None, locations=None, exclude_keywords=None):
     
     original_count = len(jobs)
     filtered_count = len(filtered_jobs)
-    print(f"Filtering complete: {filtered_count}/{original_count} jobs match criteria")
+    logger.info(f"🔍 Filtering complete: {filtered_count}/{original_count} jobs match criteria")
     
     return filtered_jobs
 
@@ -430,14 +433,14 @@ if __name__ == "__main__":
     # Using the one from your example: January 2025
     HIRING_THREAD_URL = "https://news.ycombinator.com/item?id=42575537"
 
-    print("--- Starting Hacker News Scraper Test ---")
+    logger.info("🧪 --- Starting Hacker News Scraper Test ---")
     jobs = get_job_postings(HIRING_THREAD_URL)
 
     if jobs:
-        print("\n--- Scraping Complete. First 2 Jobs Found: ---")
+        logger.info("✅ \n--- Scraping Complete. First 2 Jobs Found: ---")
         for i, job in enumerate(jobs[:2]):
-            print(f"\n--- Job {i+1} (ID: {job['id']}) ---")
+            logger.info(f"💼 \n--- Job {i+1} (ID: {job['id']}) ---")
             # Print the first 250 characters of the job text
-            print(job['text'][:250] + "...")
+            logger.info(job['text'][:250] + "...")
     else:
-        print("\n--- Scraping Test Finished with No Results. ---")
+        logger.warning("⚠️ \n--- Scraping Test Finished with No Results. ---")

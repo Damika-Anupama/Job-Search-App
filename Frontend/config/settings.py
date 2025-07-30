@@ -69,10 +69,10 @@ class FrontendSettings:
     
     @classmethod
     def get_api_url(cls, endpoint: str, **kwargs) -> str:
-        """Get full API URL for endpoint"""
+        """Get API endpoint path (without base URL)"""
         endpoint_path = cls.ENDPOINTS.get(endpoint, endpoint)
         if kwargs:
             endpoint_path = endpoint_path.format(**kwargs)
-        return f"{cls.BACKEND_BASE_URL}{endpoint_path}"
+        return endpoint_path
 
 settings = FrontendSettings()

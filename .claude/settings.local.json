@@ -19,7 +19,8 @@
       "Bash(streamlit run:*)",
       "Bash(curl:*)",
       "Bash(docker logs:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }

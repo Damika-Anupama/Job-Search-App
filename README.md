@@ -31,7 +31,8 @@ job-search-app/
 │   │   └── models.py        # Pydantic request/response models
 │   ├── core/                # Business logic and services
 │   │   ├── config.py        # Configuration management
-│   │   └── search.py        # Core search functionality
+│   │   ├── search.py        # Core search functionality
+│   │   └── logging_config.py # Structured logging configuration
 │   ├── db/                  # Database connections and services
 │   │   ├── mongodb.py       # MongoDB user tracking
 │   │   └── redis_client.py  # Redis caching client
@@ -41,7 +42,14 @@ job-search-app/
 │   │   └── indexing.py      # Vector database operations
 │   └── scraping/            # Data collection modules
 │       ├── scrapers.py      # Job board scrapers
-│       └── tasks.py         # Celery background tasks
+│       ├── tasks.py         # Celery background tasks
+│       └── celery_config.py # Production Celery configuration
+├── scripts/                 # Utility scripts
+│   └── monitor_services.py  # Service monitoring and health checks
+├── logs/                    # Application logs (auto-created)
+│   ├── job_search.log       # Main application logs
+│   ├── errors.log           # Error-level logs only
+│   └── scraping.log         # Background task logs
 ├── tests/                   # Test suite
 ├── config/                  # Configuration files
 ├── docker/                  # Docker deployment files
@@ -103,18 +111,26 @@ APP_MODE=cloud-ml
 python app.py
 ```
 
-### 3. **Docker Deployment**
+### 3. **Docker Deployment (Recommended)**
 
 ```bash
-# Lightweight mode
-docker-compose -f docker/docker-compose-lightweight.yml up
+# Full-stack deployment with all services
+docker-compose -f docker/docker-compose-fullstack.yml up -d
 
-# Full ML mode  
-docker-compose -f docker/docker-compose.yml up
+# View services status
+docker-compose -f docker/docker-compose-fullstack.yml ps
 
-# Cloud ML mode
-docker-compose -f docker/docker-compose-cloud.yml up
+# View logs
+docker-compose -f docker/docker-compose-fullstack.yml logs -f
 ```
+
+**Services Included:**
+- 🔗 **Backend API** (port 8000) - FastAPI application
+- 🖥️ **Frontend** (port 8501) - Streamlit interface  
+- 📦 **Redis Cache** (port 6379) - High-performance caching
+- ⚙️ **Celery Worker** - Background job processing
+- ⏰ **Celery Scheduler** - Periodic task scheduling
+- 📊 **Structured Logging** - All services log to `logs/` directory
 
 ## 📚 API Documentation
 
@@ -177,6 +193,17 @@ PINECONE_INDEX_NAME=job-search-index
 # HuggingFace (required for cloud-ml mode)
 HF_INFERENCE_API=your_hf_endpoint
 HF_TOKEN=your_hf_token
+
+# Logging Configuration (optional)
+LOG_LEVEL=INFO|DEBUG|WARNING|ERROR
+LOG_TO_FILE=true|false
+LOG_DIR=logs
+
+# Celery Configuration (optional)
+CELERY_WORKER_CONCURRENCY=2
+CELERY_ENVIRONMENT=development|production|testing
+CELERY_SECURE=true|false
+ENABLE_CELERY_MONITORING=true|false
 ```
 
 ## 🧪 Testing
@@ -196,35 +223,92 @@ python tests/test_mongodb.py
 python tests/test_api_endpoints.py
 ```
 
-## 📊 Monitoring
+## 📊 Monitoring & Logging
 
-### Health Checks
-- **Overall**: `GET /health`
-- **Embedding Service**: `GET /health/embedding`
-- **Components**: Individual service status
+### 📋 Service Health Monitoring
+```bash
+# Run comprehensive health check
+python scripts/monitor_services.py
 
-### Metrics
-- Search response times
-- Cache hit rates  
-- User activity statistics
-- ML model performance
+# Continuous monitoring (Ctrl+C to stop)
+python scripts/monitor_services.py --continuous
+
+# JSON output for scripts/alerting
+python scripts/monitor_services.py --json
+```
+
+### 🔍 Health Check Endpoints
+- **Overall System**: `GET /health`
+- **Individual Services**: Docker health checks for all containers
+- **Celery Worker**: `celery -A src.job_search.scraping.tasks.celery_app inspect ping`
+- **Celery Scheduler**: Process monitoring in scheduler container
+
+### 📁 Structured Logging
+```bash
+# View logs in real-time
+tail -f logs/job_search.log
+
+# View only errors
+tail -f logs/errors.log
+
+# View background task logs
+tail -f logs/scraping.log
+
+# View all Docker service logs
+docker-compose -f docker/docker-compose-fullstack.yml logs -f
+```
+
+**Log Levels Available:**
+- `DEBUG` - Detailed debugging information
+- `INFO` - General application flow (default)
+- `WARNING` - Potential issues or important notices
+- `ERROR` - Error conditions that need attention
+
+### 📈 Metrics & Performance
+- ⚡ Search response times and cache hit rates
+- 👥 User activity and job application statistics  
+- 🧠 ML model performance and inference times
+- 🔄 Background task execution and success rates
+- 📊 Service health and availability metrics
 
 ## 🚀 Production Deployment
 
-### Docker Swarm
+### 🐳 Docker Production Setup
 ```bash
-docker stack deploy -c docker/docker-compose-production.yml job-search
+# Production deployment with separated services
+docker-compose -f docker/docker-compose-fullstack.yml up -d
+
+# Scale workers for high load
+docker-compose -f docker/docker-compose-fullstack.yml up -d --scale worker=3
+
+# Enable production logging and monitoring
+export LOG_LEVEL=INFO
+export LOG_TO_FILE=true
+export CELERY_ENVIRONMENT=production
+export ENABLE_CELERY_MONITORING=true
 ```
 
-### Kubernetes
-```bash
-kubectl apply -f k8s/
-```
+### 📊 Service Architecture (Production)
+- **Backend API** - Main FastAPI application
+- **Frontend** - Streamlit user interface
+- **Redis Cache** - High-performance data caching
+- **Celery Worker(s)** - Background job processing (scalable)
+- **Celery Beat Scheduler** - Periodic task scheduling (single instance)
+- **Log Aggregation** - Centralized logging to `logs/` directory
 
-### Performance Recommendations
-- **Lightweight**: 512MB RAM, 1 CPU core
-- **Full ML**: 4GB RAM, 2 CPU cores
-- **Cloud ML**: 2GB RAM, 1-2 CPU cores
+### ⚡ Performance Recommendations
+
+**Resource Requirements by Mode:**
+- **Lightweight Mode**: 512MB RAM, 1 CPU core
+- **Full ML Mode**: 4GB RAM, 2-4 CPU cores  
+- **Cloud ML Mode**: 2GB RAM, 2 CPU cores
+
+**Production Optimizations:**
+- Enable log file rotation (10MB files, 5 backups)
+- Use Redis persistence for critical cache data
+- Scale Celery workers based on job volume
+- Monitor worker memory usage (restart after 1000 tasks)
+- Set appropriate task time limits (1 hour default)
 
 ## 🤝 Contributing
 

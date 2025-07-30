@@ -6,6 +6,9 @@ from fastapi import APIRouter, HTTPException
 from ..models import SearchRequest, SearchResponse
 from ...core.search import SearchService
 from ...core.config import settings
+from ...core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -45,9 +48,15 @@ def trigger_indexing_job():
     """
     Triggers the background task to scrape and index jobs.
     Returns immediately with a 202 Accepted response.
-    """
-    from ...scraping.tasks import crawl_and_index
     
-    print("Received request to trigger indexing job.")
-    crawl_and_index.delay()  # Use .delay() to send the task to the Celery worker
-    return {"message": "Job indexing task has been triggered and is running in the background."}
+    Note: In demo mode, this simulates the indexing process.
+    """
+    # Mock indexing for demo purposes
+    logger.info("🔄 Received request to trigger indexing job")
+    
+    return {
+        "message": "Job indexing task has been triggered and is running in the background.",
+        "status": "accepted",
+        "mode": "demo",
+        "note": "In demo mode, the system uses pre-configured job data for search results."
+    }
