@@ -20,7 +20,8 @@
       "Bash(curl:*)",
       "Bash(docker logs:*)",
       "Bash(docker exec:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(timeout:*)"
     ],
     "deny": []
   }

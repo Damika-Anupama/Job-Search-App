@@ -192,47 +192,66 @@ class SearchService:
             logger.error(f"Embedding generation failed: {e}")
             raise HTTPException(status_code=503, detail=f"Embedding service unavailable: {e}")
 
-        # 3. Vector search
-        candidate_top_k = min(100, max(50, request.max_results * 8))
+        # 3. Vector search (increased for chunk-based search)
+        candidate_top_k = min(200, max(100, request.max_results * 15))  # More chunks needed
         
         try:
             search_result = self.pinecone_index.query(
                 vector=query_vector,
                 top_k=candidate_top_k,
-                include_metadata=True
+                include_metadata=True,
+                filter={"is_chunk": True}  # Only search chunks, not old full-text entries
             )
             
             if not search_result['matches']:
                 return self._empty_response(cache_params)
             
-            total_found = len(search_result['matches'])
+            total_chunks_found = len(search_result['matches'])
+            logger.info(f"🔍 Found {total_chunks_found} matching chunks")
             
-            # 4. Apply filtering
-            filtered_candidates = self._filter_jobs(search_result['matches'], request)
+            # 4. Aggregate chunks back to job-level results
+            aggregated_jobs = self._aggregate_chunks_to_jobs(search_result['matches'])
+            
+            if not aggregated_jobs:
+                return SearchResponse(
+                    source="pinecone-chunks",
+                    results=[],
+                    total_found=0,
+                    filters_applied=cache_params,
+                    reranked=False,
+                    candidates_retrieved=total_chunks_found
+                )
+            
+            logger.info(f"📊 Aggregated to {len(aggregated_jobs)} unique jobs")
+            
+            # 5. Apply filtering to aggregated jobs
+            filtered_candidates = self._filter_jobs(aggregated_jobs, request)
             
             if not filtered_candidates:
                 return SearchResponse(
-                    source="pinecone",
+                    source="pinecone-chunks",
                     results=[],
-                    total_found=total_found,
+                    total_found=len(aggregated_jobs),
                     filters_applied=cache_params,
                     reranked=False,
-                    candidates_retrieved=total_found
+                    candidates_retrieved=total_chunks_found
                 )
             
-            # 5. Rerank results
+            logger.info(f"🔽 Filtered to {len(filtered_candidates)} jobs")
+            
+            # 6. Rerank results (using combined text from chunks)
             reranked_results = self.rerank_search_results(
                 query=request.query,
                 jobs=filtered_candidates,
                 top_k=request.max_results
             )
             
-            # 6. Format and cache results
+            # 7. Format and cache results
             final_results = self._format_results(reranked_results)
             response_data = SearchResponse(
-                source="pinecone",
+                source="pinecone-chunks",
                 results=final_results,
-                total_found=total_found,
+                total_found=len(aggregated_jobs),
                 filters_applied=cache_params,
                 reranked=True,
                 candidates_retrieved=len(filtered_candidates)
@@ -520,6 +539,167 @@ class SearchService:
             self.redis_client.set(cache_key, json.dumps(cache_data), ex=1800)  # Cache for 30 minutes
         except redis.exceptions.RedisError as e:
             logger.warning(f"Redis cache write error: {e}")
+    
+    def _aggregate_chunks_to_jobs(self, chunk_results: List[Dict]) -> List[Dict]:
+        """
+        Aggregate chunk-based search results back to job-level results.
+        
+        This function:
+        1. Groups chunks by parent_job_id
+        2. Calculates aggregate scores for each job
+        3. Combines chunk metadata intelligently
+        4. Returns job-level results for display
+        
+        Args:
+            chunk_results: List of chunk results from Pinecone
+            
+        Returns:
+            List of aggregated job results
+        """
+        if not chunk_results:
+            return []
+        
+        job_groups = {}
+        
+        # Group chunks by parent job ID
+        for chunk in chunk_results:
+            metadata = chunk.get('metadata', {})
+            parent_job_id = metadata.get('parent_job_id', chunk.get('id', '').split('_chunk_')[0])
+            
+            if parent_job_id not in job_groups:
+                job_groups[parent_job_id] = {
+                    'chunks': [],
+                    'max_score': 0,
+                    'avg_score': 0,
+                    'chunk_types': set(),
+                    'best_chunk': None
+                }
+            
+            # Add chunk to group
+            chunk_score = chunk.get('score', 0)
+            job_groups[parent_job_id]['chunks'].append(chunk)
+            job_groups[parent_job_id]['chunk_types'].add(metadata.get('chunk_type', 'unknown'))
+            
+            # Track best performing chunk
+            if chunk_score > job_groups[parent_job_id]['max_score']:
+                job_groups[parent_job_id]['max_score'] = chunk_score
+                job_groups[parent_job_id]['best_chunk'] = chunk
+        
+        # Aggregate chunks into job results
+        aggregated_jobs = []
+        
+        for job_id, group in job_groups.items():
+            chunks = group['chunks']
+            best_chunk = group['best_chunk']
+            best_metadata = best_chunk.get('metadata', {}) if best_chunk else {}
+            
+            # Calculate aggregate scores
+            scores = [chunk.get('score', 0) for chunk in chunks]
+            max_score = max(scores) if scores else 0
+            avg_score = sum(scores) / len(scores) if scores else 0
+            weighted_score = max_score * 0.7 + avg_score * 0.3  # Emphasize best chunk
+            
+            # Combine chunk texts intelligently
+            combined_text = self._combine_chunk_texts(chunks)
+            
+            # Create aggregated job result
+            aggregated_job = {
+                'id': job_id,
+                'score': weighted_score,
+                'metadata': {
+                    # Use metadata from best-performing chunk
+                    'text': combined_text,
+                    'title': best_metadata.get('title', ''),
+                    'company': best_metadata.get('company', ''),
+                    'location': best_metadata.get('location', ''),
+                    'url': best_metadata.get('url', ''),
+                    'source': best_metadata.get('source', ''),
+                    
+                    # NER metadata (same across all chunks from same job)
+                    'skills': best_metadata.get('skills', []),
+                    'experience_years': best_metadata.get('experience_years'),
+                    'experience_level': best_metadata.get('experience_level'),
+                    'salary_min': best_metadata.get('salary_min'),
+                    'salary_max': best_metadata.get('salary_max'),
+                    'salary_amount': best_metadata.get('salary_amount'),
+                    'remote_work': best_metadata.get('remote_work', False),
+                    'extracted_locations': best_metadata.get('extracted_locations', []),
+                    'education': best_metadata.get('education', []),
+                    'benefits': best_metadata.get('benefits', []),
+                    
+                    # Aggregation metadata
+                    'chunk_count': len(chunks),
+                    'chunk_types': list(group['chunk_types']),
+                    'best_chunk_type': best_metadata.get('chunk_type', 'unknown'),
+                    'best_chunk_score': max_score,
+                    'avg_chunk_score': avg_score,
+                    'processing_quality': best_metadata.get('processing_quality', 0.5),
+                    
+                    # Preserve chunk information for debugging
+                    'chunk_scores': scores,
+                    'matched_sections': list(group['chunk_types'])
+                }
+            }
+            
+            aggregated_jobs.append(aggregated_job)
+        
+        # Sort by aggregated score
+        aggregated_jobs.sort(key=lambda x: x['score'], reverse=True)
+        
+        logger.info(f"📊 Aggregated {len(chunk_results)} chunks → {len(aggregated_jobs)} jobs")
+        return aggregated_jobs
+    
+    def _combine_chunk_texts(self, chunks: List[Dict]) -> str:
+        """
+        Intelligently combine chunk texts back into coherent job description.
+        
+        Prioritizes sections in logical order and removes redundancy.
+        """
+        if not chunks:
+            return ""
+        
+        # Sort chunks by type priority and index
+        section_priority = {
+            'title': 0,
+            'summary': 1,
+            'responsibilities': 2,
+            'requirements': 3,
+            'benefits': 4,
+            'about': 5,
+            'full': 6,
+            'segment': 7
+        }
+        
+        # Sort chunks by priority and index
+        sorted_chunks = sorted(chunks, key=lambda c: (
+            section_priority.get(c.get('metadata', {}).get('chunk_type', 'segment'), 10),
+            c.get('metadata', {}).get('chunk_index', 0)
+        ))
+        
+        # Combine texts, avoiding redundancy
+        combined_parts = []
+        seen_texts = set()
+        
+        for chunk in sorted_chunks:
+            chunk_text = chunk.get('metadata', {}).get('text', '').strip()
+            if not chunk_text or chunk_text in seen_texts:
+                continue
+            
+            # Add section header if available
+            section_header = chunk.get('metadata', {}).get('section_header')
+            if section_header and section_header not in chunk_text:
+                combined_parts.append(f"\n{section_header}:")
+            
+            combined_parts.append(chunk_text)
+            seen_texts.add(chunk_text)
+        
+        # Join with appropriate spacing
+        combined_text = '\n\n'.join(combined_parts).strip()
+        
+        # Clean up excessive whitespace
+        combined_text = re.sub(r'\n{3,}', '\n\n', combined_text)
+        
+        return combined_text
     
     def _filter_jobs(self, jobs: List[Dict], request: SearchRequest) -> List[Dict]:
         """Apply enhanced filtering logic with NER metadata support"""
