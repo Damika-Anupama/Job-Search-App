@@ -476,14 +476,6 @@ export ENABLE_CELERY_MONITORING=true
 - Monitor worker memory usage (restart after 1000 tasks)
 - Set appropriate task time limits (1 hour default)
 
-## 🤝 Contributing
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
 ### Development Setup
 ```bash
 # Install development dependencies
@@ -504,16 +496,3 @@ mypy src/
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **FastAPI** for the excellent web framework
-- **Sentence Transformers** for semantic search capabilities
-- **MongoDB Atlas** for user data persistence
-- **Pinecone** for vector database services
-- **HuggingFace** for ML model hosting
-
----
-
-**📧 Support**: Open an issue or contact the development team
-**🌟 Star**: If this project helps you, consider giving it a star!
