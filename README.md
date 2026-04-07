@@ -99,7 +99,6 @@ job-search-app/
 │   ├── Dockerfile-lightweight# Lightweight backend
 │   ├── docker-compose-fullstack.yml    # Production
 │   └── docker-compose-development.yml # Development
-├── docs/                     # Architecture and planning docs
 └── requirements/             # Dependency specifications
     ├── base.txt              # Lightweight mode
     ├── ml.txt                # Full ML / Cloud ML mode
